@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: compass
+      POSTGRES_PASSWORD: compass
+      POSTGRES_DB: diyar_compass
+    ports:
+      - "5432:5432"
+    volumes:
+      - compass-data:/var/lib/postgresql/data
+  backend:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://compass:compass@db:5432/diyar_compass
+      SECRET_KEY: change-me-in-production
+      CORS_ORIGINS: http://localhost:3000
+      SEED_SAMPLE_DATA: "true"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  compass-data:
