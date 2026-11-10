@@ -13,7 +13,7 @@ from app.models.tables import (
 from app.services.access import fail, has_permission, has_role
 from app.services.assessments import can_view_opportunity, get_assessment
 from app.services.red_flags import evaluate_red_flags
-from app.services.constants import DECISION_VALUES
+from app.services.lookups import require_code
 from app.services.records import audit, notify, notify_roles
 from app.services.scoring import to_decimal
 
@@ -100,8 +100,7 @@ def record_decision(db: Session, user, assessment_id, payload) -> ManagementDeci
     if assessment.status != "pending_approval":
         fail(409, "This assessment is not awaiting an executive decision")
     decision = payload.decision
-    if decision not in DECISION_VALUES:
-        fail(400, "Decision is not recognised")
+    require_code(db, "decision", decision, "Decision is not recognised")
     if not payload.comments or len(payload.comments.strip()) < 5:
         fail(400, "Decision comments are required")
     flags = evaluate_red_flags(db, assessment.opportunity_id) or assessment.submitted_red_flags or []

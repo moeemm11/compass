@@ -219,22 +219,9 @@ def list_roles(user: User = Depends(get_current_user), db: Session = Depends(get
 
 @router.get("/lookups")
 def lookups(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    from app.services.constants import (
-        ACTION_PRIORITIES,
-        ACTION_STATUSES,
-        AGREEMENT_STATUSES,
-        AVAILABILITY_STATUSES,
-        COMMITMENT_STATUSES,
-        NDA_STATUSES,
-        OPPORTUNITY_SOURCES,
-        OPPORTUNITY_STATUSES,
-        PARTNER_STATUSES,
-        RESOURCE_TYPES,
-        RISK_CATEGORIES,
-        RISK_STATUSES,
-        STRATEGIC_IMPORTANCE,
-    )
+    from app.services.lookups import grouped
 
+    options = grouped(db)
     return {
         "countries": _named(db, Country),
         "sectors": _named(db, Sector),
@@ -242,19 +229,21 @@ def lookups(user: User = Depends(get_current_user), db: Session = Depends(get_db
         "service_lines": _named(db, ServiceLine),
         "currencies": [{"code": row.code, "name": row.name} for row in db.scalars(select(Currency).order_by(Currency.code)).all()],
         "capabilities": _named(db, PartnerCapability),
-        "sources": OPPORTUNITY_SOURCES,
-        "statuses": OPPORTUNITY_STATUSES,
-        "strategic_importance": STRATEGIC_IMPORTANCE,
-        "risk_categories": RISK_CATEGORIES,
-        "risk_statuses": RISK_STATUSES,
-        "action_statuses": ACTION_STATUSES,
-        "action_priorities": ACTION_PRIORITIES,
-        "partner_statuses": PARTNER_STATUSES,
-        "nda_statuses": NDA_STATUSES,
-        "agreement_statuses": AGREEMENT_STATUSES,
-        "commitment_statuses": COMMITMENT_STATUSES,
-        "resource_types": RESOURCE_TYPES,
-        "availability_statuses": AVAILABILITY_STATUSES,
+        "sources": options.get("opportunity_source", []),
+        "statuses": options.get("opportunity_status", []),
+        "strategic_importance": options.get("strategic_importance", []),
+        "risk_categories": options.get("risk_category", []),
+        "risk_statuses": options.get("risk_status", []),
+        "action_statuses": options.get("action_status", []),
+        "action_priorities": options.get("action_priority", []),
+        "partner_statuses": options.get("partner_status", []),
+        "nda_statuses": options.get("nda_status", []),
+        "agreement_statuses": options.get("agreement_status", []),
+        "commitment_statuses": options.get("commitment_status", []),
+        "resource_types": options.get("resource_type", []),
+        "availability_statuses": options.get("availability_status", []),
+        "decisions": options.get("decision", []),
+        "question_types": options.get("question_type", []),
         "users": [{"id": str(row.id), "full_name": row.full_name} for row in db.scalars(select(User).where(User.is_active.is_(True)).order_by(User.full_name)).all()],
     }
 
@@ -971,6 +960,11 @@ def _detail(db: Session, user: User, opportunity_id):
 
 
 def _apply_partner(db: Session, partner: Partner, payload: PartnerIn) -> Partner:
+    from app.services.lookups import require_code
+
+    require_code(db, "partner_status", payload.partnership_status, "Partnership status is not recognised")
+    require_code(db, "nda_status", payload.nda_status, "NDA status is not recognised")
+    require_code(db, "agreement_status", payload.agreement_status, "Agreement status is not recognised")
     for field in [
         "name",
         "description",

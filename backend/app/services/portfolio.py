@@ -31,18 +31,7 @@ from app.models.tables import (
 )
 from app.services.access import fail, has_permission
 from app.services.assessments import can_edit_opportunity, can_view_opportunity
-from app.services.constants import (
-    ACTION_PRIORITIES,
-    ACTION_STATUSES,
-    AVAILABILITY_STATUSES,
-    COMMITMENT_STATUSES,
-    MANUAL_TRANSITIONS,
-    OPPORTUNITY_SOURCES,
-    RESOURCE_TYPES,
-    RISK_CATEGORIES,
-    RISK_STATUSES,
-    STRATEGIC_IMPORTANCE,
-)
+from app.services.lookups import allowed_transitions, require_code
 from app.services.financials import CommercialInputs, calculate_commercial
 from app.services.records import ACTION_SUMMARIES, audit, next_reference, status_label
 from app.services.scoring import display_score, to_decimal
@@ -97,10 +86,10 @@ def update_opportunity(db: Session, user: User, opportunity: Opportunity, payloa
         if not data["service_line_ids"]:
             fail(400, "Select at least one service line")
         _set_service_lines(db, opportunity, data.pop("service_line_ids"))
-    if "opportunity_source" in data and data["opportunity_source"] not in OPPORTUNITY_SOURCES:
-        fail(400, "Opportunity source is not recognised")
-    if "strategic_importance" in data and data["strategic_importance"] not in STRATEGIC_IMPORTANCE + [None]:
-        fail(400, "Strategic importance is not recognised")
+    if "opportunity_source" in data:
+        require_code(db, "opportunity_source", data["opportunity_source"], "Opportunity source is not recognised")
+    if "strategic_importance" in data and data["strategic_importance"] is not None:
+        require_code(db, "strategic_importance", data["strategic_importance"], "Strategic importance is not recognised")
     if "currency_code" in data and db.get(Currency, data["currency_code"]) is None:
         fail(400, "Currency is not recognised")
     for field, value in data.items():
@@ -122,7 +111,7 @@ def update_opportunity(db: Session, user: User, opportunity: Opportunity, payloa
 def transition_opportunity(db: Session, user: User, opportunity: Opportunity, target: str) -> Opportunity:
     if not can_edit_opportunity(db, user, opportunity):
         fail(403, "You can only change the status of opportunities you own")
-    allowed = MANUAL_TRANSITIONS.get(opportunity.status, set())
+    allowed = allowed_transitions(db, opportunity.status)
     if target not in allowed:
         fail(400, f"Cannot move an opportunity from {status_label(opportunity.status)} to {status_label(target)}")
     previous = opportunity.status
@@ -276,7 +265,7 @@ def present_opportunity(db: Session, opportunity: Opportunity, assessment: Asses
     payload["approvals"] = [_approval(item, db) for item in db.scalars(select(ApprovalRecord).where(ApprovalRecord.opportunity_id == opportunity.id).order_by(ApprovalRecord.decided_at)).all()]
     payload["attachments"] = _attachments(db, "opportunity", opportunity.id)
     payload["activity"] = activity(db, opportunity.id)
-    payload["allowed_transitions"] = sorted(MANUAL_TRANSITIONS.get(opportunity.status, set()))
+    payload["allowed_transitions"] = sorted(allowed_transitions(db, opportunity.status))
     return payload
 
 
@@ -347,10 +336,8 @@ def save_commercial(db: Session, user: User, opportunity: Opportunity, payload) 
 def save_risk(db: Session, user: User, opportunity: Opportunity, payload, risk: Risk | None = None) -> Risk:
     if not can_edit_opportunity(db, user, opportunity) and not has_permission(user, "assessments.complete_any", db):
         fail(403, "You do not have permission to edit risks")
-    if payload.category not in RISK_CATEGORIES:
-        fail(400, "Risk category is not recognised")
-    if payload.status not in RISK_STATUSES:
-        fail(400, "Risk status is not recognised")
+    require_code(db, "risk_category", payload.category, "Risk category is not recognised")
+    require_code(db, "risk_status", payload.status, "Risk status is not recognised")
     if risk is None:
         risk = Risk(opportunity_id=opportunity.id, reference_number=next_reference(db, "RSK", Risk, "reference_number"))
         db.add(risk)
@@ -381,8 +368,8 @@ def save_risk(db: Session, user: User, opportunity: Opportunity, payload, risk: 
 def save_resource(db: Session, user: User, opportunity: Opportunity, payload, row: ResourceRequirement | None = None) -> ResourceRequirement:
     if not can_edit_opportunity(db, user, opportunity) and not has_permission(user, "assessments.complete_any", db):
         fail(403, "You do not have permission to edit resources")
-    if payload.resource_type not in RESOURCE_TYPES or payload.availability_status not in AVAILABILITY_STATUSES:
-        fail(400, "Resource type or availability is not recognised")
+    require_code(db, "resource_type", payload.resource_type, "Resource type or availability is not recognised")
+    require_code(db, "availability_status", payload.availability_status, "Resource type or availability is not recognised")
     if row is None:
         row = ResourceRequirement(opportunity_id=opportunity.id)
         db.add(row)
@@ -403,8 +390,8 @@ def save_resource(db: Session, user: User, opportunity: Opportunity, payload, ro
 def save_action(db: Session, user: User, opportunity: Opportunity, payload, row: ActionItem | None = None) -> ActionItem:
     if not can_edit_opportunity(db, user, opportunity) and not has_permission(user, "assessments.complete_any", db):
         fail(403, "You do not have permission to edit actions")
-    if payload.priority not in ACTION_PRIORITIES or payload.status not in ACTION_STATUSES:
-        fail(400, "Action priority or status is not recognised")
+    require_code(db, "action_priority", payload.priority, "Action priority or status is not recognised")
+    require_code(db, "action_status", payload.status, "Action priority or status is not recognised")
     if row is None:
         row = ActionItem(opportunity_id=opportunity.id, reference_number=next_reference(db, "ACT", ActionItem, "reference_number"))
         db.add(row)
@@ -429,8 +416,7 @@ def link_partner(db: Session, user: User, opportunity: Opportunity, payload) -> 
     partner = db.get(Partner, payload.partner_id)
     if partner is None or partner.deleted_at is not None:
         fail(404, "Partner was not found")
-    if payload.commitment_status not in COMMITMENT_STATUSES:
-        fail(400, "Commitment status is not recognised")
+    require_code(db, "commitment_status", payload.commitment_status, "Commitment status is not recognised")
     row = db.scalar(
         select(OpportunityPartner).where(
             OpportunityPartner.opportunity_id == opportunity.id,
@@ -639,10 +625,9 @@ def _validate_opportunity_refs(db: Session, payload) -> None:
         fail(400, "Business unit was not found")
     if db.get(Currency, payload.currency_code) is None:
         fail(400, "Currency is not recognised")
-    if payload.opportunity_source not in OPPORTUNITY_SOURCES:
-        fail(400, "Opportunity source is not recognised")
-    if payload.strategic_importance and payload.strategic_importance not in STRATEGIC_IMPORTANCE:
-        fail(400, "Strategic importance is not recognised")
+    require_code(db, "opportunity_source", payload.opportunity_source, "Opportunity source is not recognised")
+    if payload.strategic_importance:
+        require_code(db, "strategic_importance", payload.strategic_importance, "Strategic importance is not recognised")
     lines = db.scalars(select(ServiceLine).where(ServiceLine.id.in_(payload.service_line_ids))).all()
     if len(lines) != len(set(payload.service_line_ids)):
         fail(400, "One or more service lines were not found")

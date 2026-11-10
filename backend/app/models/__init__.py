@@ -15,6 +15,7 @@ from app.models.tables import (  # noqa: F401
     CriterionScore,
     Currency,
     EvaluationCriterion,
+    LookupOption,
     EvaluationSubcriterion,
     ManagementDecision,
     Notification,

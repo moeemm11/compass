@@ -52,6 +52,9 @@ USERS = [
 
 
 def seed_database(db: Session) -> None:
+    from app.services.lookups import ensure_lookup_options
+
+    ensure_lookup_options(db)
     if db.scalar(select(User.id).limit(1)):
         return
     permissions = {}

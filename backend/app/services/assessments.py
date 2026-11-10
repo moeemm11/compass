@@ -25,6 +25,7 @@ from app.models.tables import (
 )
 from app.services.access import fail, has_permission
 from app.services.constants import EDITABLE_ASSESSMENT_STATUSES
+from app.services.lookups import codes
 from app.services.recommendation import RecommendationBand, match_recommendation
 from app.services.records import audit, next_reference, notify
 from app.services.red_flags import evaluate_red_flags
@@ -576,6 +577,15 @@ def present_assessment(db: Session, user: User, assessment: Assessment) -> dict:
         "recommendation_description": rule.description if rule else "",
         "recommendation_action": rule.management_action if rule else "",
         "recommendation_color": rule.color if rule else "#1B4F8A",
+        "recommendation_options": [
+            item.recommendation_name
+            for item in db.scalars(
+                select(RecommendationRule)
+                .where(RecommendationRule.template_version_id == version.id)
+                .order_by(RecommendationRule.priority, RecommendationRule.minimum_score.desc())
+            ).all()
+        ],
+        "decision_options": codes(db, "decision"),
         "template": {
             "id": str(template.id),
             "name": template.name,

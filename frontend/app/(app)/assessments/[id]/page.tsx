@@ -74,7 +74,7 @@ export default function AssessmentPage() {
 
   if (!assessment) return <p className="text-sm text-muted">{error || "Loading assessment…"}</p>;
   const editable = assessment.can_edit && ["draft", "in_progress", "returned"].includes(assessment.status);
-  const rules = ["Proceed with the opportunity", "Proceed subject to closing identified gaps", "Limit commitment and conduct further due diligence", "Reconsider scope, partnership or commercial model", "Do not commit under current conditions"];
+  const rules = assessment.recommendation_options || [];
 
   return (
     <div>
@@ -191,7 +191,7 @@ export default function AssessmentPage() {
           <p className="text-sm text-muted">The system recommendation stays visible even if you override it. An override and any red-flag exception both need a justification.</p>
           <div className="mt-3 grid gap-3">
             <select className={fieldClass} value={decision} onChange={(event) => setDecision(event.target.value)}>
-              {["approved", "conditionally_approved", "on_hold", "rejected", "returned"].map((item) => <option key={item} value={item}>{label(item)}</option>)}
+              {(assessment.decision_options || []).map((item: string) => <option key={item} value={item}>{label(item)}</option>)}
             </select>
             <textarea className={fieldClass} rows={3} placeholder="Decision comments" value={comments} onChange={(event) => setComments(event.target.value)} />
             <select className={fieldClass} value={overrideRecommendation} onChange={(event) => setOverrideRecommendation(event.target.value)}>

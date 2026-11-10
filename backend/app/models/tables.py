@@ -613,6 +613,19 @@ class Notification(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class LookupOption(Base):
+    __tablename__ = "lookup_options"
+    __table_args__ = (UniqueConstraint("category", "code", name="uq_lookup_category_code"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    category: Mapped[str] = mapped_column(String(64), index=True)
+    code: Mapped[str] = mapped_column(String(160))
+    label: Mapped[str] = mapped_column(String(200))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    details: Mapped[dict | None] = mapped_column(json_type())
+
+
 class SystemSetting(Base):
     __tablename__ = "system_settings"
 

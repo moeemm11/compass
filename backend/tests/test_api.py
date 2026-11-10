@@ -31,6 +31,22 @@ def login(client, email, password=DEMO_PASSWORD):
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
 
+def test_lookup_lists_are_read_from_the_database(client):
+    from app.models.tables import LookupOption
+
+    headers = login(client, "bd@diyar.local")
+    before = client.get("/api/v1/lookups", headers=headers).json()
+    assert "identified" in before["statuses"]
+    assert "Government Tender" in before["sources"]
+    assert "approved" in before["decisions"]
+    db = client.app.state.session_factory()
+    db.add(LookupOption(category="opportunity_source", code="Conference", label="Conference", sort_order=50, is_active=True))
+    db.commit()
+    db.close()
+    after = client.get("/api/v1/lookups", headers=headers).json()
+    assert "Conference" in after["sources"]
+
+
 def test_viewer_cannot_create_an_opportunity_and_manager_can(client):
     lookups = client.get("/api/v1/lookups", headers=login(client, "bd@diyar.local")).json()
     payload = {
